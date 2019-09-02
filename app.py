@@ -34,9 +34,6 @@ def GetAllDomains():
             if myDomain != '':
                 myDomains.append(myDomain)
 
-        # Active from test
-        # myDomains.remove('tchucas.net')
-
         return myDomains
 
     except Exception as e:
@@ -58,67 +55,47 @@ def getMsid():
 
         for item in i:
             n = item.get('messageIds')
-            if len(n) > 1:
-                n = str(n)
-                n = n.replace("u", '').replace("[", "").replace("]","").replace("'","")
-                n = n.split(",")
-                messageIds = n
-                try:
-                    obj = []
-                    adresses = []
-                    for msgid in messageIds:
-                        c = '%s -z -m %s@%s gm %s' % (zmmailbox, account, domain, msgid)
-                        s = subprocess.check_output([c], shell=True)
-                        obj.append(s)
+            n = n[0]
+            n = str(n)
+            messageIds.append(n)
 
-                    for item in obj:
-                        if item.find(to) == -1:
-                            for addressFrom in item.splitlines():
-                                lines = addressFrom.split('\n')
-                                for line in lines:
-                                    if To in line:
-                                        nameAddress = line.split(" ", 1)
-                                        nameAddress = nameAddress[1]
-                                        nameAddress = nameAddress.replace(' ', '')
-                                        adresses.append(nameAddress)
-                                        adresses.sort()
+        if len(messageIds) == 0:
+            logging.info('Nenhum email encontrado, finalizando execução')
+            print('Nenhum email encontrado, finalizando execução')
+            sys.exit(0)
 
-                    return adresses
+        messageIds.sort()
 
-                except Exception as e:
-                    print(e)
+        try:
 
-            else:
-                n = str(n)
-                n = n.replace("u", '').replace("[", "").replace("]","").replace("'","")
-                messageIds.append(n)
-                try:
-                    obj = []
-                    adresses = []
-                    for msgid in messageIds:
-                        c = '%s -z -m %s@%s gm %s' % (zmmailbox, account, domain, msgid)
-                        s = subprocess.check_output([c], shell=True)
-                        obj.append(s)
+            obj = []
+            adresses = []
 
-                    for item in obj:
-                        if item.find(to) == -1:
-                            for addressFrom in item.splitlines():
-                                lines = addressFrom.split('\n')
-                                for line in lines:
-                                    if To in line:
-                                        nameAddress = line.split(" ", 3)
-                                        nameAddress.remove('')
-                                        nameAddress = nameAddress[-1]
-                                        nameAddress = nameAddress.replace('<', '').replace('>', '')
-                                        adresses.append(nameAddress)
-                                        adresses.sort()
+            for msgid in messageIds:
+                c = '%s -z -m %s@%s gm %s' % (zmmailbox, account, domain, msgid)
+                s = subprocess.check_output([c], shell=True)
+                obj.append(s)
 
-                    return adresses
+            for item in obj:
+                x = re.findall(r'[\w\.-]+@[\w.-]+', item)
+                if x:
+                    y = x[2]
+                    adresses.append(y)
 
-                except Exception as e:
-                    print(e)
+            adresses.sort()
+
+            return adresses
+
+        except Exception as e:
+            logging.error('Ocorreu um erro na definição getMisd ao tentar criar a lista adresses.')
+            logging.error(e)
+            print('Ocorreu um erro na definição getMisd ao tentar criar a lista adresses.')
+            print(e)
 
     except Exception as e:
+        logging.error('Ocorreu um erro na definição getMisd ao tentar criar a lista messageIds.')
+        logging.error(e)
+        print('Ocorreu um erro na definição getMisd ao tentar criar a lista messageIds.')
         print(e)
 
 def getDomainFromAddress():
