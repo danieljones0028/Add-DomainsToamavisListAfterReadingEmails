@@ -12,10 +12,44 @@ import json
 
 logging.basicConfig(filename='mailboxantispam.log', format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
 
-zmprov = '/opt/zimbra/bin/zmprov'
-zmmailbox = '/opt/zimbra/bin/zmmailbox'
-domain = 'empresalab.com.br'
-account = 'spam_collection'
+# POSTMAP
+if os.path.exists('/opt/zimbra/postfix/sbin/postmap'):
+    postmap = '/opt/zimbra/postfix/sbin/postmap'
+elif os.path.exists('/opt/zimbra/common/sbin/postmap'):
+    postmap = '/opt/zimbra/common/sbin/postmap'
+else:
+    logging.error('postmap nao encontrado...')
+    print('path to postmap not found, Zimbra is installed?')
+    sys.exit(1)
+
+# ZMPROV
+if os.path.exists('/opt/zimbra/bin/zmprov'):
+    zmprov = '/opt/zimbra/bin/zmprov'
+else:
+    logging.error('zmprov nao encontrado...')
+    print('ath to zmprov not found, Zimbra is installed?')
+    sys.exit(1)
+
+# ZMMAILBOX
+if os.path.exists('/opt/zimbra/bin/zmmailbox'):
+    zmmailbox = '/opt/zimbra/bin/zmmailbox'
+else:
+    logging.error('zmprov nao encontrado...')
+    print('ath to zmmailbox not found, Zimbra is installed?')
+    sys.exit(1)
+
+# POSTFIX BLACKLIST
+if os.path.exists('/opt/zimbra/conf/postfix_blacklist'):
+    postfix_blacklistfile = '/opt/zimbra/conf/postfix_blacklist'
+else:
+    subprocess.call(['touch', '/opt/zimbra/conf/postfix_blacklist'], shell=True)
+
+# INPUTS
+# domain = raw_input('You domain: ')
+# account = raw_input('Account name: ')
+
+domain = 'domain.org'
+account = 'spam'
 
 # change to your language
 to = 'De '
@@ -24,6 +58,7 @@ To = 'De'
 def GetAllDomains():
 
     myDomains = []
+    MyDomainsWhiteList = ['google.com', 'hotmail.com']
 
     try:
         c = '%s gad' % (zmprov)
@@ -33,6 +68,9 @@ def GetAllDomains():
         for myDomain in s:
             if myDomain != '':
                 myDomains.append(myDomain)
+
+        for myDomain in MyDomainsWhiteList:
+            myDomains.append(myDomains)
 
         return myDomains
 
@@ -60,8 +98,8 @@ def getMsid():
             messageIds.append(n)
 
         if len(messageIds) == 0:
-            logging.info('Nenhum email encontrado, finalizando execução')
-            print('Nenhum email encontrado, finalizando execução')
+            logging.info('No emails found, ending execution')
+            print('No emails found, ending execution')
             sys.exit(0)
 
         messageIds.sort()
@@ -87,15 +125,15 @@ def getMsid():
             return adresses
 
         except Exception as e:
-            logging.error('Ocorreu um erro na definição getMisd ao tentar criar a lista adresses.')
+            logging.error('An error occurred in the getMisd definition while trying to create the adresses list..')
             logging.error(e)
-            print('Ocorreu um erro na definição getMisd ao tentar criar a lista adresses.')
+            print('An error occurred in the getMisd definition while trying to create the adresses list..')
             print(e)
 
     except Exception as e:
-        logging.error('Ocorreu um erro na definição getMisd ao tentar criar a lista messageIds.')
+        logging.error('An error occurred in getMisd definition while trying to create messageIds list.')
         logging.error(e)
-        print('Ocorreu um erro na definição getMisd ao tentar criar a lista messageIds.')
+        print('An error occurred in getMisd definition while trying to create messageIds list.')
         print(e)
 
 def getDomainFromAddress():
@@ -123,13 +161,13 @@ def getDomainFromAddress():
 
         unique_list.sort()
 
-# Teste trecho do codigo para validação
         myDomains = GetAllDomains()
 
         for item in myDomains:
             if item in unique_list:
+                logging.warning('One of your domains was found on the spam checklist: %s' % (item))
+                print('One of your domains was found on the spam checklist: %s' % (item))
                 unique_list.remove(item)
-# Teste trecho do codigo para validação
 
         return unique_list
 
@@ -180,6 +218,7 @@ def comparingLists(current, check):
     membershipList = []
 
     try:
+
         for item in check:
             if item not in current:
                 logging.info('adding item to membership list: %s' % (item))
@@ -195,10 +234,15 @@ def comparingLists(current, check):
     return membershipList
 
 def searchSolveIpFromMx(data):
+
     try:
+
+        global ListOfIPSFoundFromCollectedDomains
+
         list_Ips = []
         list_Mx = []
         unique_List = []
+
         for mx_s in data:
             for mx in dns.resolver.query(mx_s, 'MX'):
                 mx = mx.to_text()
@@ -252,6 +296,53 @@ def searchSolveIpFromMx(data):
 
     return ListOfIPSFoundFromCollectedDomains
 
+def postfix_blacklist(data):
+
+    currentList = open(postfix_blacklistfile, 'r').read().split('\n')
+
+    unique_list = []
+    currentListListed = []
+    listOfIpsThatWillBeAdded = []
+
+    try:
+        for line in currentList:
+            if line != '':
+                for ip in line.splitlines():
+                    i, t = ip.split(' ', 1)
+                    currentListListed.append(i)
+
+        for item in currentListListed:
+            if item not in unique_list:
+                logging.info('removing repeated items if they exist in the list: %s' % (item))
+                print('removing repeated items if they exist in the list: %s' % (item))
+                unique_list.append(item)
+
+        for IpToBeVerified in data:
+            if IpToBeVerified not in unique_list:
+                listOfIpsThatWillBeAdded.append(IpToBeVerified)
+                logging.info('adding ip: %s accession list.' % (IpToBeVerified))
+                print('adding ip: %s accession list.' % (IpToBeVerified))
+
+        if not len(listOfIpsThatWillBeAdded) == 0:
+            for IpChecked in listOfIpsThatWillBeAdded:
+                cmd_shell = "echo '%s REJECT' >> %s" % (IpChecked, postfix_blacklistfile)
+                subprocess.call(cmd_shell, shell=True)
+                logging.info('add ip: %s' % (IpChecked))
+                print('add ip: %s' % (IpChecked))
+
+            cmd_postmap = '%s %s' % (postmap, postfix_blacklistfile)
+            subprocess.call(cmd_postmap, shell=True)
+            logging.info('Updating postfix database with command postmap')
+            print('Updating postfix database with command postmap')
+
+        else:
+            logging.warning('no new IPS entries')
+            print('no new IPS entries.')
+
+    except Exception as e:
+        print('definition postfix_blacklist error: %s' % (e))
+        logging.error('definition postfix_blacklist error: %s' % (e))
+
 def addingDomains(data):
 
     try:
@@ -272,7 +363,7 @@ def addingDomains(data):
         print('Definition addingDomains error')
         print(e)
 
-
 comparingLists(collectsCurrentList(), getDomainFromAddress())
 searchSolveIpFromMx(membershipList)
+postfix_blacklist(ListOfIPSFoundFromCollectedDomains)
 addingDomains(membershipList)
